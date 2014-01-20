@@ -42,29 +42,31 @@ func pcrawlHandler(c appengine.Context, w http.ResponseWriter, r *http.Request) 
 
 func pcrawl(c appengine.Context, aUrl string, depth int) chan *Tree {
 	ch := make(chan *Tree)
-	if depth > 0 {
-		go func() {
+	go func() {
+		if depth > 0 {
+			c.Infof("go deeper... %s", aUrl)
 			tree := _crawl(c, aUrl, depth)
 			ch <- tree
-		}()
-	} else {
-		ch <- &Tree{Url: aUrl}
-	}
+		} else {
+			c.Infof("deep enough ... %s", aUrl)
+			ch <- &Tree{Url: aUrl}
+		}
+	}()
 	return ch
 }
 
 func _crawl(c appengine.Context, aUrl string, depth int) *Tree {
-	c.Infof("crawling! depth: %d", depth)
-
 	client := urlfetch.Client(c)
 
 	tree := Tree{Url: aUrl}
 
+	c.Infof("fetching... %s", tree.Url)
 	resp, err := client.Get(tree.Url)
 	if err != nil {
 		tree.Error = err.Error()
 		return &tree
 	}
+	c.Infof("fetched ... %s", tree.Url)
 
 	parsedUrl, _ := url.Parse(tree.Url)
 
@@ -76,16 +78,20 @@ func _crawl(c appengine.Context, aUrl string, depth int) *Tree {
 		tokenType := z.Next()
 		switch tokenType {
 		case html.ErrorToken:
-			c.Infof("eor len(children): %d", len(futureChildren))
-			for _, ch := range futureChildren {
+			c.Infof("eor %s len(children): %d", aUrl, len(futureChildren))
+			for i, ch := range futureChildren {
+				c.Infof("getting %s child[%d]...", aUrl, i)
 				child := <-ch
+				c.Infof("got %s child[%d]...", aUrl, i)
 				tree.Children = append(tree.Children, child)
 				tree.ChildrenUrl = append(tree.ChildrenUrl, child.Url)
 			}
+			c.Infof("saving... %s", aUrl)
 			key := datastore.NewKey(c, "Tree", tree.Url, 0, nil)
 			if _, err := datastore.Put(c, key, &tree); err != nil {
 				tree.Error = err.Error()
 			}
+			c.Infof("done... %s", aUrl)
 			return &tree
 		case html.TextToken:
 			if inTitle {
@@ -101,7 +107,7 @@ func _crawl(c appengine.Context, aUrl string, depth int) *Tree {
 				for moreAttr {
 					var key, val []byte
 					key, val, moreAttr = z.TagAttr()
-					c.Infof("href: %s", val)
+					c.Infof("child found: %s", val)
 					var childUrl string
 					if string(key) == "href" {
 						if string(val[0:4]) == "http" {

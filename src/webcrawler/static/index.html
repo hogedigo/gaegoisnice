@@ -1,0 +1,27 @@
+<html>
+<head>
+	<meta charset="utf-8">
+    <title>webcrawler</title>
+	<style type="text/css">
+	form {
+		margin: 40px 0 0 40px;
+	}
+	form input[type="url"] {
+		width: 400px;
+	}
+	</style>
+</head>
+  <body>
+    <form action="/crawl" method="post">
+    	<label>URL: </label><input type="url" name="url" required>
+    	<label>Depth: </label><input type="number" name="depth" min="0" required>
+    	<input type="submit" value="sync">
+    </form>
+    <br>
+    <form action="/p_crawl" method="post">
+    	<label>URL: </label><input type="url" name="url" required>
+    	<label>Depth: </label><input type="number" name="depth" min="0" required>
+    	<input type="submit" value="async">
+    </form>
+  </body>
+</html>

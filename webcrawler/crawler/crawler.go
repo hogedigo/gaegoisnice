@@ -16,19 +16,26 @@ import (
 	"github.com/mjibson/appstats"
 )
 
-func init() {
-	http.Handle("/p_crawl", appstats.NewHandler(pcrawlHandler))
+type Tree struct {
+	Url         string   `json:",omitempty"`
+	Title       string   `json:",omitempty"`
+	Error       string   `json:",omitempty"`
+	Children    []*Tree  `datastore:"-"`
+	ChildrenUrl []string `json:"-"`
 }
 
-func pcrawlHandler(c appengine.Context, w http.ResponseWriter, r *http.Request) {
+func init() {
+	http.Handle("/crawl", appstats.NewHandler(crawlHandler))
+}
+
+func crawlHandler(c appengine.Context, w http.ResponseWriter, r *http.Request) {
 	u := r.FormValue("url")
 	depth, err := strconv.Atoi(r.FormValue("depth"))
 	if err != nil {
 		return
 	}
 
-	ch := pcrawl(c, u, depth-1)
-	root := <-ch
+	root := crawl(c, u, depth-1)
 
 	b, err := json.Marshal(root)
 	if err != nil {
@@ -40,20 +47,7 @@ func pcrawlHandler(c appengine.Context, w http.ResponseWriter, r *http.Request) 
 	w.Write(b)
 }
 
-func pcrawl(c appengine.Context, aUrl string, depth int) chan *Tree {
-	ch := make(chan *Tree)
-	if depth > 0 {
-		go func() {
-			tree := _crawl(c, aUrl, depth)
-			ch <- tree
-		}()
-	} else {
-		ch <- &Tree{Url: aUrl}
-	}
-	return ch
-}
-
-func _crawl(c appengine.Context, aUrl string, depth int) *Tree {
+func crawl(c appengine.Context, aUrl string, depth int) *Tree {
 	c.Infof("crawling! depth: %d", depth)
 
 	client := urlfetch.Client(c)
@@ -68,20 +62,12 @@ func _crawl(c appengine.Context, aUrl string, depth int) *Tree {
 
 	parsedUrl, _ := url.Parse(tree.Url)
 
-	futureChildren := make([]chan *Tree, 0, 5)
-
 	inTitle := false
 	z := html.NewTokenizer(resp.Body)
 	for {
 		tokenType := z.Next()
 		switch tokenType {
 		case html.ErrorToken:
-			c.Infof("eor len(children): %d", len(futureChildren))
-			for _, ch := range futureChildren {
-				child := <-ch
-				tree.Children = append(tree.Children, child)
-				tree.ChildrenUrl = append(tree.ChildrenUrl, child.Url)
-			}
 			key := datastore.NewKey(c, "Tree", tree.Url, 0, nil)
 			if _, err := datastore.Put(c, key, &tree); err != nil {
 				tree.Error = err.Error()
@@ -110,8 +96,14 @@ func _crawl(c appengine.Context, aUrl string, depth int) *Tree {
 							childUrl = parsedUrl.Scheme + "://" + parsedUrl.Host + string(val)
 						}
 
-						ch := pcrawl(c, childUrl, depth-1)
-						futureChildren = append(futureChildren, ch)
+						var child *Tree
+						if depth > 0 {
+							child = crawl(c, childUrl, depth-1)
+						} else {
+							child = &Tree{Url: childUrl}
+						}
+						tree.Children = append(tree.Children, child)
+						tree.ChildrenUrl = append(tree.ChildrenUrl, child.Url)
 
 						break
 					}
