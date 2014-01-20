@@ -44,11 +44,9 @@ func pcrawl(c appengine.Context, aUrl string, depth int) chan *Tree {
 	ch := make(chan *Tree)
 	go func() {
 		if depth > 0 {
-			c.Infof("go deeper... %s", aUrl)
 			tree := _crawl(c, aUrl, depth)
 			ch <- tree
 		} else {
-			c.Infof("deep enough ... %s", aUrl)
 			ch <- &Tree{Url: aUrl}
 		}
 	}()
